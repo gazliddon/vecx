@@ -5,9 +5,7 @@ vecx
 
 Requirements
 ------------
-* `libsdl`
-* `sdl_gfx`
-* `sdl_image`
+* `libsdl2`
 
 Usage
 -----
