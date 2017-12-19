@@ -38,9 +38,28 @@ void osint_render(void) {
 
 static char *cartfilename = NULL;
 
+
+static void loadCart(void) {
+
+    memset(cart, 0, sizeof(cart));
+
+    if (cartfilename) {
+        FILE *f;
+        if (!(f = fopen(cartfilename, "rb"))) {
+            perror(cartfilename);
+            exit(EXIT_FAILURE);
+        }
+        fread(cart, 1, sizeof(cart), f);
+        fclose(f);
+    }
+
+}
+
 static void init() {
     FILE *f;
+
     char *romfilename = getenv("VECTREX_ROM");
+
     if (romfilename == NULL) {
         romfilename = "rom.dat";
     }
@@ -55,15 +74,8 @@ static void init() {
     fclose(f);
 
     memset(cart, 0, sizeof(cart));
-    if (cartfilename) {
-        FILE *f;
-        if (!(f = fopen(cartfilename, "rb"))) {
-            perror(cartfilename);
-            exit(EXIT_FAILURE);
-        }
-        fread(cart, 1, sizeof(cart), f);
-        fclose(f);
-    }
+
+    loadCart();
 }
 
 void resize(int width, int height) {
@@ -106,6 +118,9 @@ static void readevents() {
             case SDL_KEYDOWN:
                 switch (e.key.keysym.sym) {
                     case SDLK_r:
+                        // reload the cartridge
+                        loadCart();
+                        // reset the vectrex
                         vecx_reset();
                         break;
                     case SDLK_q:
