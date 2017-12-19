@@ -1,12 +1,16 @@
 
-#include "SDL.h"
-#include "SDL_gfxPrimitives.h"
-#include "SDL_image.h"
-#include "SDL_rotozoom.h"
+#include <SDL2/SDL.h>
+/* #include <SDL/SDL_gfxPrimitives.h> */
+/* #include <SDL/SDL_image.h> */
+/* #include <SDL/SDL_rotozoom.h> */
 
 #include "e8910.h"
 #include "osint.h"
 #include "vecx.h"
+
+#include "cscreen.h"
+
+#include <vector>
 
 #define EMU_TIMER 20 /* the emulators heart beats at 20 milliseconds */
 
@@ -18,26 +22,26 @@ static long scl_factor;
 static long offx;
 static long offy;
 
-void osint_render(void) {
-    SDL_FillRect(screen, NULL, 0);
 
-    int v;
-    for (v = 0; v < vector_draw_cnt; v++) {
-        Uint8 c = vectors_draw[v].color * 256 / VECTREX_COLORS;
-        aalineRGBA(screen, offx + vectors_draw[v].x0 / scl_factor,
-                   offy + vectors_draw[v].y0 / scl_factor,
-                   offx + vectors_draw[v].x1 / scl_factor,
-                   offy + vectors_draw[v].y1 / scl_factor, c, c, c, 0xff);
+void renderLines(SDL_Renderer * _r, vector_type * _vecs, size_t _num) {
+
+    SDL_SetRenderDrawColor(_r, 255, 255, 255, 200);
+
+    for (size_t i = 0; i < _num; i++ ) {
+
+        auto const & v = _vecs[i];
+
+        auto x1 = offx + v.x0 / scl_factor;
+        auto y1 = offy + v.y0 / scl_factor;
+        auto x2 = offx + v.x1 / scl_factor;
+        auto y2 = offy + v.y1 / scl_factor;
+
+        SDL_RenderDrawLine(_r, x1, y1, x2, y2);
     }
-    if (overlay) {
-        SDL_Rect dest_rect = {offx, offy, 0, 0};
-        SDL_BlitSurface(overlay, NULL, screen, &dest_rect);
-    }
-    SDL_Flip(screen);
+
 }
 
 static char *cartfilename = NULL;
-
 
 static void loadCart(void) {
 
@@ -58,7 +62,8 @@ static void loadCart(void) {
 static void init() {
     FILE *f;
 
-    char *romfilename = getenv("VECTREX_ROM");
+
+    char const *romfilename = getenv("VECTREX_ROM");
 
     if (romfilename == NULL) {
         romfilename = "rom.dat";
@@ -83,37 +88,31 @@ void resize(int width, int height) {
 
     long screenx = width;
     long screeny = height;
-    screen =
-        SDL_SetVideoMode(screenx, screeny, 0, SDL_SWSURFACE | SDL_RESIZABLE);
 
-    sclx = ALG_MAX_X / screen->w;
-    scly = ALG_MAX_Y / screen->h;
+    sclx = ALG_MAX_X / width;
+    scly = ALG_MAX_Y / height;
 
     scl_factor = sclx > scly ? sclx : scly;
 
     offx = (screenx - ALG_MAX_X / scl_factor) / 2;
     offy = (screeny - ALG_MAX_Y / scl_factor) / 2;
-
-    if (overlay_original) {
-        if (overlay) SDL_FreeSurface(overlay);
-        double overlay_scale = ((double)ALG_MAX_X / (double)scl_factor) /
-                               (double)overlay_original->w;
-        overlay =
-            zoomSurface(overlay_original, overlay_scale, overlay_scale, 0);
-    }
 }
 
+
+
 static void readevents() {
+
     SDL_Event e;
+
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
             case SDL_QUIT:
                 exit(EXIT_SUCCESS);
                 break;
 
-            case SDL_VIDEORESIZE:
-                resize(e.resize.w, e.resize.h);
-                break;
+                /* case SDL_VIDEORESIZE: */
+                /*     resize(e.resize.w, e.resize.h); */
+                /*     break; */
 
             case SDL_KEYDOWN:
                 switch (e.key.keysym.sym) {
@@ -190,51 +189,79 @@ static void readevents() {
     }
 }
 
-void osint_emuloop() {
-    Uint32 next_time = SDL_GetTicks() + EMU_TIMER;
+
+
+int main(int argc, char *argv[]) {
+
+
+    float aspect = float( logicalWidth ) / float( logicalHeight );
+
+    unsigned desiredWidth = 480;
+
+    unsigned desiredHeight = float(desiredWidth) / aspect;
+
+
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+        fprintf(stderr, "Failed to initialize SDL: %s\n", SDL_GetError());
+        exit(-1);
+    }
+
+    auto sdlWindow = SDL_CreateWindow("My Game Window",
+            SDL_WINDOWPOS_UNDEFINED,
+            SDL_WINDOWPOS_UNDEFINED,
+            desiredWidth, desiredHeight,
+            0);
+
+    auto sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_ACCELERATED);
+    /* auto sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, 0); */
+
+    auto sdlTexture = SDL_CreateTexture(sdlRenderer,
+            SDL_PIXELFORMAT_ARGB8888,
+            SDL_TEXTUREACCESS_STREAMING,
+            logicalWidth, logicalHeight);
+
+    SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_NONE);
+
+    SDL_SetRenderDrawColor(sdlRenderer, 0, 0, 0, 255);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+    SDL_RenderSetLogicalSize(sdlRenderer, logicalWidth, logicalHeight);
+
+    cScreen scr;
+
+    e8910_init_sound();
+    init();
     vecx_reset();
-    for (;;) {
+
+    Uint32 next_time = SDL_GetTicks() + EMU_TIMER;
+
+    while (true) {
+
+        resize(logicalWidth, logicalHeight);
+
+        SDL_SetRenderDrawColor(sdlRenderer, 0, 0, 0, 255);
+        SDL_RenderClear(sdlRenderer);
+
+        Uint32 next_time = SDL_GetTicks() + EMU_TIMER;
         vecx_emu((VECTREX_MHZ / 1000) * EMU_TIMER);
+        renderLines(sdlRenderer, vectors_draw, vector_draw_cnt);
+        SDL_RenderPresent(sdlRenderer);
+
         readevents();
 
         {
             Uint32 now = SDL_GetTicks();
+
             if (now < next_time)
                 SDL_Delay(next_time - now);
             else
                 next_time = now;
             next_time += EMU_TIMER;
         }
-    }
-}
 
-void load_overlay(const char *filename) {
-    SDL_Surface *image;
-    image = IMG_Load(filename);
-    if (image) {
-        overlay_original = image;
-    } else {
-        fprintf(stderr, "IMG_Load: %s\n", IMG_GetError());
-    }
-}
-
-int main(int argc, char *argv[]) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
-        fprintf(stderr, "Failed to initialize SDL: %s\n", SDL_GetError());
-        exit(-1);
     }
 
-    resize(330 * 3 / 2, 410 * 3 / 2);
 
-    if (argc > 1) cartfilename = argv[1];
-    if (argc > 2) load_overlay(argv[2]);
 
-    init();
-
-    e8910_init_sound();
-    osint_emuloop();
-    e8910_done_sound();
-    SDL_Quit();
 
     return 0;
 }

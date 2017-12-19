@@ -26,6 +26,44 @@ enum {
 	IRQ_CWAI	= 2
 };
 
+struct regs_t {
+	unsigned reg_x;
+	unsigned reg_y;
+
+	unsigned reg_u;
+
+	/* hardware stack pointer */
+	unsigned reg_s;
+
+	/* program counter */
+	unsigned reg_pc;
+
+	/* accumulators */
+	unsigned reg_a;
+	unsigned reg_b;
+	/* direct page register */
+	unsigned reg_dp;
+	/* condition codes */
+	unsigned reg_cc;
+};
+
+unsigned * getReg(struct regs_t * _regs, unsigned _rnum) {
+
+	switch (_rnum%3) {
+		case 0:
+			return &_regs->reg_x;
+		case 1:
+			return &_regs->reg_y;
+		case 2:
+			return &_regs->reg_u;
+		default:
+			return &_regs->reg_s;
+	};
+
+}
+
+struct regs_t regs;
+
 /* index registers */
 
 static unsigned reg_x;
@@ -501,6 +539,7 @@ static einline unsigned ea_indexed (unsigned *cycles)
 		*cycles += 5;
 		break;
 	default:
+		ea = 0;
 		printf ("undefined post-byte\n");
 		break;
 	}
